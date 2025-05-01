@@ -1,0 +1,168 @@
+#include <climits>
+#include <omp.h>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <functional>
+#include <chrono>
+#include <stdexcept>
+
+using std::cout;
+using std::chrono::duration_cast;
+using std::chrono::high_resolution_clock;
+using std::chrono::milliseconds;
+
+void s_avg(const int arr[], int n) {
+    long long sum = 0LL;
+    for (int i = 0; i < n; i++) {
+        sum += arr[i];
+    }
+    cout << sum / static_cast<long long>(n);
+}
+
+void p_avg(const int arr[], int n) {
+    long long sum = 0LL;
+    #pragma omp parallel for reduction(+:sum) num_threads(16)
+    for (int i = 0; i < n; i++) {
+        sum += arr[i];
+    }
+    cout << sum / static_cast<long long>(n);
+}
+
+void s_sum(const int arr[], int n) {
+    long long sum = 0LL;
+    for (int i = 0; i < n; i++) {
+        sum += arr[i];
+    }
+    cout << sum;
+}
+
+void p_sum(const int arr[], int n) {
+    long long sum = 0LL;
+    #pragma omp parallel for reduction(+:sum) num_threads(16)
+    for (int i = 0; i < n; i++) {
+        sum += arr[i];
+    }
+    cout << sum;
+}
+
+void s_max(const int arr[], int n) {
+    int max_val = INT_MIN;
+    for (int i = 0; i < n; i++) {
+        if (arr[i] > max_val) {
+            max_val = arr[i];
+        }
+    }
+    cout << max_val;
+}
+
+void p_max(const int arr[], int n) {
+    int max_val = INT_MIN;
+    #pragma omp parallel for reduction(max:max_val) num_threads(16)
+    for (int i = 0; i < n; i++) {
+        if (arr[i] > max_val) {
+            max_val = arr[i];
+        }
+    }
+    cout << max_val;
+}
+
+void s_min(const int arr[], int n) {
+    int min_val = INT_MAX;
+    for (int i = 0; i < n; i++) {
+        if (arr[i] < min_val) {
+            min_val = arr[i];
+        }
+    }
+    cout << min_val;
+}
+
+void p_min(const int arr[], int n) {
+    int min_val = INT_MAX;
+    #pragma omp parallel for reduction(min:min_val) num_threads(16)
+    for (int i = 0; i < n; i++) {
+        if (arr[i] < min_val) {
+            min_val = arr[i];
+        }
+    }
+    cout << min_val;
+}
+
+std::string bench_traverse(const std::function<void()>& traverse_fn) {
+    auto start = high_resolution_clock::now();
+    traverse_fn();
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<milliseconds>(stop - start);
+    return std::to_string(duration.count());
+}
+
+int main(int argc, const char** argv) {
+    try {
+        if (argc < 3) {
+            throw std::invalid_argument("Usage: " + std::string(argv[0]) + 
+                                      " <array_length> <max_random_value>");
+        }
+
+        int n = std::stoi(argv[1]);
+        int rand_max = std::stoi(argv[2]);
+        
+        if (n <= 0 || rand_max <= 0) {
+            throw std::invalid_argument("Both arguments must be positive integers");
+        }
+
+        std::vector<int> a(n);
+        
+        // Initialize with random values
+        #pragma omp parallel for num_threads(16)
+        for (int i = 0; i < n; i++) {
+            a[i] = rand() % rand_max;
+        }
+
+        cout << "Generated random array of length " << n 
+             << " with elements between 0 to " << rand_max << "\n\n";
+        
+        // Print first 20 elements for verification
+        cout << "First 20 elements: \n";
+        for (int i = 0; i < 20 && i < n; i++) {
+            cout << a[i] << " ";
+        }
+        cout << "\n\n";
+
+        omp_set_num_threads(16);
+
+        cout << "Sequential Min: "; s_min(a.data(), n); 
+        cout << " (" << bench_traverse([&] { s_min(a.data(), n); }) << "ms)\n";
+        
+        cout << "Parallel (16) Min: "; p_min(a.data(), n); 
+        cout << " (" << bench_traverse([&] { p_min(a.data(), n); }) << "ms)\n\n";
+        
+        cout << "Sequential Max: "; s_max(a.data(), n); 
+        cout << " (" << bench_traverse([&] { s_max(a.data(), n); }) << "ms)\n";
+        
+        cout << "Parallel (16) Max: "; p_max(a.data(), n); 
+        cout << " (" << bench_traverse([&] { p_max(a.data(), n); }) << "ms)\n\n";
+        
+        cout << "Sequential Sum: "; s_sum(a.data(), n); 
+        cout << " (" << bench_traverse([&] { s_sum(a.data(), n); }) << "ms)\n";
+        
+        cout << "Parallel (16) Sum: "; p_sum(a.data(), n); 
+        cout << " (" << bench_traverse([&] { p_sum(a.data(), n); }) << "ms)\n\n";
+        
+        cout << "Sequential Average: "; s_avg(a.data(), n); 
+        cout << " (" << bench_traverse([&] { s_avg(a.data(), n); }) << "ms)\n";
+        
+        cout << "Parallel (16) Average: "; p_avg(a.data(), n); 
+        cout << " (" << bench_traverse([&] { p_avg(a.data(), n); }) << "ms)\n";
+
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
+}
+
+
+// To run 
+// g++ -o stats.exe -fopenmp statistics.cpp
+// .\stats.exe 1000000 1000

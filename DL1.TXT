@@ -1,0 +1,110 @@
+# Data analysis and visualization
+import tensorflow as tf
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+# %matplotlib inline  # Uncomment if using Jupyter Notebook
+
+# Preprocessing and evaluation
+from sklearn.model_selection import train_test_split
+from sklearn.compose import make_column_transformer
+from sklearn.preprocessing import MinMaxScaler
+
+# Load the Boston Housing dataset from TensorFlow datasets
+# test_split=0.2 means 20% of data will be used for testing
+# seed=42 ensures reproducibility of the random split
+(X_train, y_train), (X_test, y_test) = tf.keras.datasets.boston_housing.load_data(
+    path='boston_housing_npz',
+    test_split=0.2,
+    seed=42
+)
+
+# Check the shapes and types of the loaded data
+(X_train.shape, type(X_train)), (X_test.shape, type(X_test)), (y_train.shape, type(y_train)), (y_test.shape, type(y_test))
+
+# Converting the numpy arrays to pandas DataFrames for easier exploration
+X_train_df = pd.DataFrame(X_train)
+y_train_df = pd.DataFrame(y_train)
+
+# Preview the first 10 rows of the training features
+X_train_df.head(10)
+
+# Display information about the training features DataFrame
+X_train_df.info()
+print('_'*40)
+# Display information about the training target values DataFrame
+y_train_df.info()
+
+# Show descriptive statistics for the training features
+X_train_df.describe()
+
+# Create a column transformer for preprocessing
+# We'll use MinMaxScaler to normalize all columns (bringing values to 0-1 range)
+ct = make_column_transformer(
+    (MinMaxScaler(), [0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12])  # Apply to all feature columns
+)
+
+# Normalize the training and test data using the column transformer
+# Also convert data to float32 for better performance with TensorFlow
+X_train = ct.fit_transform(X_train).astype('float32')
+X_test = ct.transform(X_test).astype('float32')
+y_train = y_train.astype('float32')
+y_test = y_test.astype('float32')
+
+# Show the distribution of feature values after normalization
+pd.DataFrame(X_train).describe()
+
+# Split the training data further into training and validation sets
+# 10% of training data will be used for validation
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.1, random_state=42)
+X_train.shape, X_val.shape, y_train.shape, y_val.shape
+
+# Set random seed for reproducibility
+tf.random.set_seed(42)
+
+# Build the neural network model
+model = tf.keras.Sequential([
+    # Input layer - shape matches the number of features
+    tf.keras.Input(shape=(X_train.shape[1],)),
+    # First hidden layer with 10 neurons and ReLU activation
+    tf.keras.layers.Dense(units=10, activation='relu', name='Dense_1'),
+    # Second hidden layer with 100 neurons and ReLU activation
+    tf.keras.layers.Dense(units=100, activation='relu', name='Dense_2'),
+    # Output layer with 1 neuron (for regression prediction)
+    tf.keras.layers.Dense(units=1, name='Prediction')
+])
+
+# Compile the model with configuration for training
+model.compile(
+    loss = tf.keras.losses.MeanSquaredError(),  # MSE is common for regression
+    optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.01),  # RMSprop optimizer with learning rate
+    metrics = ['mse']  # Track mean squared error during training
+)
+
+# Train the model on the training data
+history = model.fit(
+    X_train,
+    y_train,
+    batch_size=32,  # Number of samples per gradient update
+    epochs=50,  # Number of passes through the entire dataset
+    validation_data=(X_val, y_val)  # Data to evaluate after each epoch
+)
+
+# Check the mean target values for training and validation sets
+# Helps understand if the sets are similarly distributed
+y_train.mean(), y_val.mean()
+
+# Evaluate the trained model on the test data
+print("Evaluation on Test data \n")
+loss, mse = model.evaluate(X_test, y_test, batch_size=32)
+print(f"\nModel loss on test set: {loss}")
+print(f"Model mean squared error on test set: {(mse):.2f}")
+
+# Plot the training and validation loss curves
+pd.DataFrame(history.history).plot(figsize=(6, 4), xlabel="Epochs", ylabel="Loss", title='Loss Curves')
+plt.show()
+
+# Make predictions on the test set
+y_pred = model.predict(X_test)
+# View the first prediction
+y_pred[0]

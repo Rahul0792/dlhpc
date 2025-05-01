@@ -1,0 +1,140 @@
+# Import necessary libraries
+import numpy as np
+from keras.datasets import imdb
+from keras import models
+from keras import layers
+from keras import optimizers
+from keras import losses
+from keras import metrics
+import matplotlib.pyplot as plt
+# %matplotlib inline  # Magic command for Jupyter Notebook to display plots inline
+
+# Load the IMDB movie review dataset, keeping only top 10,000 most frequent words
+# This helps manage memory usage and focuses on meaningful words
+(train_data, train_labels), (test_data, test_labels) = imdb.load_data(num_words=10000)
+
+# Check the first label (0 = negative review, 1 = positive review)
+train_labels[0]
+
+# Verify that no word index exceeds 10,000 since we limited our vocabulary
+# First create a list of maximum indexes in each review
+print(type([max(sequence) for sequence in train_data]))
+# Then find the overall maximum index
+max([max(sequence) for sequence in train_data])
+
+# Decode a review from integer indices back to words to understand the data
+# Step 1: Get the word-to-index dictionary
+word_index = imdb.get_word_index()
+# Step 2: Create reverse mapping (index-to-word)
+reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
+# Step 3: Decode the first review
+# Note: Indices are offset by 3 because 0, 1, and 2 are reserved for:
+# "padding", "start of sequence", and "unknown"
+decoded_review = ' '.join([reverse_word_index.get(i-3, '?') for i in train_data[0]])
+decoded_review
+
+# Check the size of our vocabulary
+len(reverse_word_index)
+
+# Function to convert lists of word indices into one-hot encoded vectors
+def vectorize_sequences(sequences, dimension=10000):
+    # Create all-zero matrix of shape (len(sequences), dimension)
+    results = np.zeros((len(sequences), dimension))
+    for i, sequence in enumerate(sequences):
+        # Set specific indices of results[i] to 1s where words are present
+        results[i, sequence] = 1
+    return results
+
+# Vectorize our training and test data
+X_train = vectorize_sequences(train_data)  # One-hot encode training data
+X_test = vectorize_sequences(test_data)    # One-hot encode test data
+
+# Examine the first vectorized review (binary vector indicating word presence)
+X_train[0]
+
+# Check the shape of our training data (number of reviews x vocabulary size)
+X_train.shape
+
+# Convert labels to numpy arrays with float32 type for neural network compatibility
+y_train = np.asarray(train_labels).astype('float32')
+y_test = np.asarray(test_labels).astype('float32')
+
+# Build our neural network model
+model = models.Sequential()  # Linear stack of layers
+# First hidden layer with 16 units and ReLU activation
+model.add(layers.Dense(16, activation='relu', input_shape=(10000,)))
+# Second hidden layer with 16 units and ReLU activation
+model.add(layers.Dense(16, activation='relu'))
+# Output layer with 1 unit and sigmoid activation (for binary classification)
+model.add(layers.Dense(1, activation='sigmoid'))
+
+# Compile the model with configuration for training
+model.compile(
+    optimizer=optimizers.RMSprop(learning_rate=0.001),  # RMSprop optimizer
+    loss=losses.binary_crossentropy,  # Binary crossentropy is suitable for binary classification
+    metrics=[metrics.binary_accuracy]  # Track accuracy during training
+)
+
+# Set aside first 10,000 samples for validation
+X_val = X_train[:10000]
+partial_X_train = X_train[10000:]
+y_val = y_train[:10000]
+partial_y_train = y_train[10000:]
+
+# Train the model for 20 epochs (full passes through the training data)
+history = model.fit(
+    partial_X_train,
+    partial_y_train,
+    epochs=20,             # Number of training iterations
+    batch_size=512,        # Number of samples per gradient update
+    validation_data=(X_val, y_val)  # Data to evaluate after each epoch
+)
+
+# Extract training history for plotting
+history_dict = history.history
+history_dict.keys()  # Shows available metrics ('loss', 'binary_accuracy', 'val_loss', 'val_binary_accuracy')
+
+# Plot training and validation loss
+loss_values = history_dict['loss']
+val_loss_values = history_dict['val_loss']
+epochs = range(1, len(loss_values) + 1)
+plt.plot(epochs, loss_values, 'g', label="Training Loss")
+plt.plot(epochs, val_loss_values, 'b', label="Validation Loss")
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss Value')
+plt.legend()
+plt.show()
+
+# Plot training and validation accuracy
+acc_values = history_dict['binary_accuracy']
+val_acc_values = history_dict['val_binary_accuracy']
+plt.plot(epochs, acc_values, 'g', label="Training Accuracy")
+plt.plot(epochs, val_acc_values, 'b', label="Validation Accuracy")
+plt.title('Training and Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+# Retrain the model for just 3 epochs (based on earlier plots showing optimal performance)
+model.fit(
+    partial_X_train,
+    partial_y_train,
+    epochs=3,
+    batch_size=512,
+    validation_data=(X_val, y_val)
+)
+
+# Make predictions on the test set
+np.set_printoptions(suppress=True)  # Disable scientific notation for probabilities
+result = model.predict(X_test)  # Get predicted probabilities (0-1)
+
+# Convert probabilities to binary predictions (0 or 1)
+y_pred = np.zeros(len(result))
+for i, score in enumerate(result):
+    y_pred[i] = 1 if score > 0.5 else 0  # Threshold at 0.5 for binary classification
+
+# Calculate Mean Absolute Error between predictions and true labels
+mae = metrics.mean_absolute_error(y_pred, y_test)
+print(f"Mean Absolute Error: {mae}")
